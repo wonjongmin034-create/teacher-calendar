@@ -123,8 +123,7 @@
   <div class="asbar">
     <label style="margin:0">우리 반 <input id="aCls" class="cls" maxlength="10" placeholder="5-1"></label>
     <select id="aMonth"></select>
-    <label style="margin:0;display:flex;gap:4px;align-items:center"><input type="checkbox" id="aTodo" style="width:auto"> 우리 반 안 한 것만</label>
-    <button class="g" id="aRoster">반 목록 설정</button>
+    <label style="margin:0;display:flex;gap:4px;align-items:center"><input type="checkbox" id="aTodo" style="width:auto"> 안 한 것만</label>
   </div>
   <div id="aList"></div>
   <div id="aSeed" class="panel hidden" style="text-align:center">
@@ -202,7 +201,7 @@ const CATS = { '수업':'#e8833a', '행사':'#5a9f68', '회의':'#3b7dd8', '연�
 const $ = id => document.getElementById(id)
 const store = { get(k){ try{return localStorage.getItem(k)||''}catch{return ''} }, set(k,v){ try{localStorage.setItem(k,v)}catch{} }, del(k){ try{localStorage.removeItem(k)}catch{} } }
 
-let room = '', me = '', assess = [], adone = [], roster = [], play = [], leaves = [], events = [], view = new Date(), sel = ymd(new Date()), channel = null, editing = null
+let room = '', me = '', assess = [], adone = [], play = [], leaves = [], events = [], view = new Date(), sel = ymd(new Date()), channel = null, editing = null
 
 function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
 function addDays(s,n){ const d = new Date(s+'T00:00:00'); d.setDate(d.getDate()+n); return ymd(d) }
@@ -247,11 +246,11 @@ $('bLink').onclick = async () => { try{ await navigator.clipboard.writeText(loca
 // ---------- 데이터 ----------
 async function load(){
   const [a, b, c, d, e, f] = await Promise.all([sb.rpc('cal_list', { p_room: room }), sb.rpc('play_list', { p_room: room }), sb.rpc('leave_list', { p_room: room }),
-    sb.rpc('assess_list', { p_room: room }), sb.rpc('assess_done_list', { p_room: room }), sb.rpc('meta_get', { p_room: room })])
+    sb.rpc('assess_list', { p_room: room }), sb.rpc('assess_done_list', { p_room: room, p_class: store.get('cal.class') }), Promise.resolve({ data: '' })])
   if (a.error) return toast('불러오기 실패: ' + a.error.message)
   events = a.data || []; play = b.data || []; leaves = c.data || []
   if ((b.error || c.error) && !load.warned) { load.warned = 1; toast('놀이교실·조퇴 표가 아직 없어요. SQL을 실행해 주세요.') }
-  assess = d.data || []; adone = e.data || []; roster = splitCls(f.data || ''); asErr = !!d.error
+  assess = d.data || []; adone = e.data || []; asErr = !!d.error
   render(); renderAssess()
 }
 function broadcast(){ channel?.send({ type:'broadcast', event:'changed', payload:{} }) }
@@ -373,7 +372,7 @@ const splitCls = t => String(t).split(/[,\s]+/).map(x => x.trim()).filter(Boolea
 const nowMon = new Date().getMonth() + 1
 const myCls = () => $('aCls').value.trim()
 $('aCls').value = store.get('cal.class')
-$('aCls').onchange = () => { store.set('cal.class', myCls()); $('pClass').value = myCls(); renderAssess() }
+$('aCls').onchange = () => { store.set('cal.class', myCls()); $('pClass').value = myCls(); load() }
 $('aMonth').innerHTML = '<option value="0">전체 월</option>' + [3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}">${m}월</option>`).join('')
 $('nMon').innerHTML = [3,4,5,6,7,8,9,10,11,12,1,2].map(m => `<option value="${m}" ${m === nowMon ? 'selected' : ''}>${m}월</option>`).join('')
 $('aMonth').onchange = $('aTodo').onchange = () => renderAssess()
@@ -386,15 +385,12 @@ function renderAssess(){
   const pend = assess.filter(a => a.month <= nowMon && mine && !doneBy(a.id).includes(mine)).length
   $('asBadge').textContent = pend; $('asBadge').classList.toggle('hidden', !pend)
   const list = assess.filter(a => (!mon || a.month === mon) && (!todo || !mine || !doneBy(a.id).includes(mine)))
-  $('aList').innerHTML = list.map(a => {
-    const dn = doneBy(a.id), all = [...new Set([...roster, ...dn])].sort((x, y) => x.localeCompare(y, 'ko', { numeric: true }))
-    const mineDone = !!mine && dn.includes(mine), missing = roster.filter(c => !dn.includes(c))
-    const full = roster.length > 0 && missing.length === 0
-    return `<div class="acard ${late(a) ? 'late' : ''} ${a.month === nowMon ? 'now' : ''} ${full ? 'all' : ''}">
+  $('aList').innerHTML = !mine ? '<p class="note">위쪽에 <b>우리 반</b>을 적으면 우리 반의 진행 상황이 보여요. (다른 반 기록은 보이지 않아요)</p>' : list.map(a => {
+    const mineDone = doneBy(a.id).includes(mine)
+    return `<div class="acard ${late(a) ? 'late' : ''} ${a.month === nowMon ? 'now' : ''} ${mineDone ? 'all' : ''}">
       <div style="display:flex;justify-content:space-between;gap:8px"><h3><span class="tag">${esc(a.subject)}</span><span class="tag m">${a.month}월</span>${esc(a.title)}</h3><button class="g" style="padding:0 8px" data-del="${a.id}" title="항목 삭제">✕</button></div>
-      <small>${esc(a.method)}${late(a) ? ' · ⚠️ 우리 반이 아직 안 했어요' : ''}${full ? ' · ✅ 모든 반 완료' : ''}</small>
-      <div class="cls-chips">${all.length ? all.map(c => `<span class="cc ${dn.includes(c) ? 'ok' : ''}">${dn.includes(c) ? '✔' : '○'} ${esc(c)}</span>`).join('') : '<small>"반 목록 설정"에서 반을 넣으면 안 한 반이 보여요.</small>'}</div>
-      <div class="act"><button class="${mineDone ? 'undo' : 'done'}" data-t="${a.id}" data-v="${mineDone ? 0 : 1}">${mineDone ? '↩ 완료 취소' : '✔ 우리 반 했어요'}</button><small>${dn.length}${roster.length ? '/' + roster.length : ''}반 완료${missing.length ? ' · 아직: ' + missing.map(esc).join(', ') : ''}</small></div></div>`
+      <small>${esc(a.method)}${late(a) ? ' · ⚠️ 아직 안 했어요' : ''}${mineDone ? ' · ✅ 완료' : ''}</small>
+      <div class="act" style="margin-top:8px"><button class="${mineDone ? 'undo' : 'done'}" data-t="${a.id}" data-v="${mineDone ? 0 : 1}">${mineDone ? '↩ 완료 취소' : '✔ 했어요'}</button></div></div>`
   }).join('') || (assess.length ? '<p class="note">조건에 맞는 항목이 없어요.</p>' : '')
   $('aList').querySelectorAll('[data-t]').forEach(b => b.onclick = async () => {
     if (!myCls()) return toast('위쪽에 "우리 반"을 먼저 적어 주세요. 예: 5-1')
@@ -421,13 +417,6 @@ $('nAdd').onclick = async () => {
   const { error } = await sb.rpc('assess_save', { p_room: room, p_item: { subject, title, method: $('nMethod').value.trim(), month: +$('nMon').value } })
   if (error) return toast('실패: ' + error.message)
   $('nTitle').value = ''; $('nMethod').value = ''; await load(); broadcast(); toast('추가했어요.')
-}
-$('aRoster').onclick = async () => {
-  const t = prompt('학년 전체 반을 쉼표로 적어 주세요.\n예: 5-1, 5-2, 5-3, 5-4, 5-5', roster.join(', '))
-  if (t === null) return
-  const { error } = await sb.rpc('meta_set', { p_room: room, p_classes: splitCls(t).join(',') })
-  if (error) return toast('실패: ' + error.message)
-  await load(); broadcast()
 }
 const showTab = as => { $('calView').classList.toggle('hidden', as); $('asView').classList.toggle('hidden', !as); $('tCal').classList.toggle('on', !as); $('tAs').classList.toggle('on', as) }
 $('tCal').onclick = () => showTab(false); $('tAs').onclick = () => showTab(true)
