@@ -454,7 +454,7 @@ $('bIcs').onclick = () => {
 
 // ---------- 구글캘린더 직접 연동 ----------
 $('gOrigin').textContent = location.origin
-$('gClient').value = store.get('cal.gclient') || DEFAULT_GOOGLE_CLIENT_ID
+$('gClient').value = DEFAULT_GOOGLE_CLIENT_ID || store.get('cal.gclient')
 $('bGoogle').onclick = () => { $('gStat').textContent = ''; $('mG').classList.remove('hidden') }
 $('gClose').onclick = () => $('mG').classList.add('hidden')
 function loadGis(){
