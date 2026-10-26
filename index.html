@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>선생님 공유 캘린더</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#e8833a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="선생님 캘린더">
 <style>
   :root{--bg:#fdf6e3;--card:#fff;--ink:#3b2f1e;--accent:#e8833a;--green:#5a9f68;--line:#e6d9bd;--mute:#a89f8a}
   *{box-sizing:border-box}
@@ -76,6 +82,7 @@
       <button id="bAdd">+ 일정 추가</button>
       <button id="bGoogle" class="gr">구글캘린더로 올리기</button>
       <button id="bIcs" class="g">.ics 파일</button>
+      <button id="bInstall" class="g hidden">📲 앱 설치</button>
       <button id="bLink" class="g">링크 복사</button>
       <button id="bOut" class="g">나가기</button>
     </div>
@@ -164,6 +171,18 @@ function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0
 function addDays(s,n){ const d = new Date(s+'T00:00:00'); d.setDate(d.getDate()+n); return ymd(d) }
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.remove('hidden'); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.add('hidden'),2800) }
 const hm = t => (t||'').slice(0,5)
+
+// ---------- 앱 설치(아이콘 만들기) ----------
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{})
+const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone
+let installEv = null
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEv = e; if (!standalone) $('bInstall').classList.remove('hidden') })
+window.addEventListener('appinstalled', () => { $('bInstall').classList.add('hidden'); toast('설치했어요! 이제 아이콘으로 열 수 있어요.') })
+if (!standalone && /iphone|ipad/i.test(navigator.userAgent)) $('bInstall').classList.remove('hidden')
+$('bInstall').onclick = async () => {
+  if (installEv) { installEv.prompt(); installEv = null; return }
+  alert('아이폰/아이패드: 아래(또는 위) 공유 버튼 → "홈 화면에 추가"를 누르세요.')
+}
 
 // ---------- 입장 ----------
 function enter(code, name){
