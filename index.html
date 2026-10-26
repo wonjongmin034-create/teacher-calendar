@@ -51,6 +51,22 @@
   .inl{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px} .inl input{flex:1;min-width:70px;padding:6px}
   .inl button{padding:6px 12px}
   .chip.play{background:#f4b942;color:#3b2f1e} .chip.leave{background:#e07a7a}
+  .tabs{display:flex;gap:6px}
+  .tabs button{background:#e6d9bd;color:var(--ink)} .tabs button.on{background:var(--accent);color:#fff}
+  #asView{max-width:1100px;margin:0 auto;padding:0 14px 40px}
+  .asbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:14px}
+  .asbar input,.asbar select{width:auto;padding:6px} .asbar input.cls{width:90px}
+  .acard{background:var(--card);border:2px solid var(--line);border-left-width:8px;border-radius:12px;padding:10px 12px;margin-bottom:10px}
+  .acard.late{border-color:#d94f4f;background:#fff4f2} .acard.now{border-left-color:var(--accent)} .acard.all{opacity:.6}
+  .acard h3{margin:0;font-size:15px} .acard small{opacity:.65}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;background:var(--accent);color:#fff;margin-right:4px}
+  .tag.m{background:#8c8472}
+  .cls-chips{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}
+  .cc{font-size:12px;border-radius:12px;padding:2px 9px;background:#eee;color:#888}
+  .cc.ok{background:var(--green);color:#fff}
+  .acard .act{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .acard button.done{background:var(--green)} .acard button.undo{background:var(--mute)}
+  .badge{background:#d94f4f;color:#fff;border-radius:10px;padding:0 7px;font-size:12px;margin-left:4px}
   /* 모달 */
   .modal{position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;padding:12px;z-index:10}
   .box{background:#fff;border-radius:14px;padding:16px;width:100%;max-width:440px;max-height:92vh;overflow:auto}
@@ -78,6 +94,7 @@
 <div id="app" class="hidden">
   <header>
     <h1>📅 <span id="roomName"></span></h1>
+    <div class="tabs"><button id="tCal" class="on">📅 달력</button><button id="tAs">📝 수행평가<span id="asBadge" class="badge hidden"></span></button></div>
     <div class="bar">
       <button id="bAdd">+ 일정 추가</button>
       <button id="bGoogle" class="gr">구글캘린더로 올리기</button>
@@ -87,7 +104,7 @@
       <button id="bOut" class="g">나가기</button>
     </div>
   </header>
-  <main>
+  <main id="calView">
     <div class="panel">
       <div class="nav"><button class="g" id="pPrev">◀</button><b id="mTitle"></b><button class="g" id="pNext">▶</button><button class="g" id="pToday">오늘</button></div>
       <div class="grid" id="grid"></div>
@@ -101,6 +118,26 @@
     </div>
   </main>
 </div>
+
+<section id="asView" class="hidden">
+  <div class="asbar">
+    <label style="margin:0">우리 반 <input id="aCls" class="cls" maxlength="10" placeholder="5-1"></label>
+    <select id="aMonth"></select>
+    <label style="margin:0;display:flex;gap:4px;align-items:center"><input type="checkbox" id="aTodo" style="width:auto"> 우리 반 안 한 것만</label>
+    <button class="g" id="aRoster">반 목록 설정</button>
+  </div>
+  <div id="aList"></div>
+  <div id="aSeed" class="panel hidden" style="text-align:center">
+    <p>아직 수행평가 항목이 없어요.</p>
+    <button id="aSeedBtn" class="gr">5학년 2학기 평가 계획 불러오기 (18개)</button>
+  </div>
+  <details class="panel"><summary class="sec" style="cursor:pointer">+ 수행평가 항목 직접 추가</summary>
+    <div class="two"><div><label>교과</label><input id="nSub" maxlength="8" placeholder="국어"></div><div><label>월</label><select id="nMon"></select></div></div>
+    <label>평가 내용</label><input id="nTitle" maxlength="60" placeholder="예: 독서 감상문 작성하기">
+    <label>평가 방법 (선택)</label><input id="nMethod" maxlength="30" placeholder="예: 서술형 평가">
+    <div class="acts"><button id="nAdd">추가</button></div>
+  </details>
+</section>
 
 <!-- 일정 편집 -->
 <div class="modal hidden" id="mEdit"><div class="box">
@@ -165,7 +202,7 @@ const CATS = { '수업':'#e8833a', '행사':'#5a9f68', '회의':'#3b7dd8', '연�
 const $ = id => document.getElementById(id)
 const store = { get(k){ try{return localStorage.getItem(k)||''}catch{return ''} }, set(k,v){ try{localStorage.setItem(k,v)}catch{} }, del(k){ try{localStorage.removeItem(k)}catch{} } }
 
-let room = '', me = '', play = [], leaves = [], events = [], view = new Date(), sel = ymd(new Date()), channel = null, editing = null
+let room = '', me = '', assess = [], adone = [], roster = [], play = [], leaves = [], events = [], view = new Date(), sel = ymd(new Date()), channel = null, editing = null
 
 function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
 function addDays(s,n){ const d = new Date(s+'T00:00:00'); d.setDate(d.getDate()+n); return ymd(d) }
@@ -209,11 +246,13 @@ $('bLink').onclick = async () => { try{ await navigator.clipboard.writeText(loca
 
 // ---------- 데이터 ----------
 async function load(){
-  const [a, b, c] = await Promise.all([sb.rpc('cal_list', { p_room: room }), sb.rpc('play_list', { p_room: room }), sb.rpc('leave_list', { p_room: room })])
+  const [a, b, c, d, e, f] = await Promise.all([sb.rpc('cal_list', { p_room: room }), sb.rpc('play_list', { p_room: room }), sb.rpc('leave_list', { p_room: room }),
+    sb.rpc('assess_list', { p_room: room }), sb.rpc('assess_done_list', { p_room: room }), sb.rpc('meta_get', { p_room: room })])
   if (a.error) return toast('불러오기 실패: ' + a.error.message)
   events = a.data || []; play = b.data || []; leaves = c.data || []
   if ((b.error || c.error) && !load.warned) { load.warned = 1; toast('놀이교실·조퇴 표가 아직 없어요. SQL을 실행해 주세요.') }
-  render()
+  assess = d.data || []; adone = e.data || []; roster = splitCls(f.data || ''); asErr = !!d.error
+  render(); renderAssess()
 }
 function broadcast(){ channel?.send({ type:'broadcast', event:'changed', payload:{} }) }
 
@@ -317,6 +356,81 @@ $('eDel').onclick = async () => {
   if (error) return toast('삭제 실패: ' + error.message)
   $('mEdit').classList.add('hidden'); await load(); broadcast()
 }
+
+// ---------- 수행평가 ----------
+const SEED = [
+  ['국어','9월','독서 감상문 작성하고 공유하기','서술·논술형'],['국어','10월','여러 지역의 방언 조사하기','보고서'],['국어','11월','주변의 문제를 주제로 토의하기','토의·토론'],
+  ['도덕','9월','우리 주변의 인권 문제를 찾아 해결 방안 이야기해 보기','서술형'],['도덕','12월','인공지능 로봇으로 환경문제를 극복하기 위한 방안 서술하기','서술형'],
+  ['사회','12월','독립운동가의 항일 투쟁 업적 조사하기','논술형'],
+  ['수학','11월','(자연수)×(소수), (소수)×(자연수)의 계산하기','서술'],['수학','12월','평균을 구하는 방법을 이해하고 해석하기','서술'],
+  ['과학','10월','이슬, 안개, 구름 비교하기','실험·실습, 서술형'],['과학','12월','재생 에너지 조사하기','구술·발표, 조사보고서'],
+  ['실과','9월','친환경 에너지를 적용한 수송 수단 시제품 만들기','작품·자기·동료평가'],['실과','11월','친환경 건설 구조물 탐색하고 간단한 구조물 만들기','작품·자기·동료평가'],['실과','12월','생활 속 문제 해결 알고리즘 표현하기','보고서, 간단 서술'],
+  ['체육','11월','우리나라 민속무용 작품 발표하기','실기·관찰'],['음악','12월','친구들과 추억 영상 만들기','활동 결과물'],['미술','9월','여러 가지 방법으로 연상하여 표현하기','실기'],
+  ['영어','9월','과거에 한 일에 대한 글 파악하고 표현하기','서술형'],['영어','11월','일과를 소개하는 글을 쓰고, 소리 내어 읽기','발표'],
+].map(([subject, m, title, method]) => ({ subject, month: parseInt(m), title, method }))
+let asErr = false
+const splitCls = t => String(t).split(/[,\s]+/).map(x => x.trim()).filter(Boolean)
+const nowMon = new Date().getMonth() + 1
+const myCls = () => $('aCls').value.trim()
+$('aCls').value = store.get('cal.class')
+$('aCls').onchange = () => { store.set('cal.class', myCls()); $('pClass').value = myCls(); renderAssess() }
+$('aMonth').innerHTML = '<option value="0">전체 월</option>' + [3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}">${m}월</option>`).join('')
+$('nMon').innerHTML = [3,4,5,6,7,8,9,10,11,12,1,2].map(m => `<option value="${m}" ${m === nowMon ? 'selected' : ''}>${m}월</option>`).join('')
+$('aMonth').onchange = $('aTodo').onchange = () => renderAssess()
+const doneBy = id => adone.filter(d => d.assess_id === id).map(d => d.class_name)
+function renderAssess(){
+  const mine = myCls(), mon = +$('aMonth').value, todo = $('aTodo').checked
+  $('aSeed').classList.toggle('hidden', assess.length > 0 || asErr)
+  if (asErr) { $('aList').innerHTML = '<p class="note">수행평가 표가 아직 없어요. SQL(schema-3)을 실행해 주세요.</p>'; return }
+  const late = a => a.month < nowMon && !!mine && !doneBy(a.id).includes(mine)
+  const pend = assess.filter(a => a.month <= nowMon && mine && !doneBy(a.id).includes(mine)).length
+  $('asBadge').textContent = pend; $('asBadge').classList.toggle('hidden', !pend)
+  const list = assess.filter(a => (!mon || a.month === mon) && (!todo || !mine || !doneBy(a.id).includes(mine)))
+  $('aList').innerHTML = list.map(a => {
+    const dn = doneBy(a.id), all = [...new Set([...roster, ...dn])].sort((x, y) => x.localeCompare(y, 'ko', { numeric: true }))
+    const mineDone = !!mine && dn.includes(mine), missing = roster.filter(c => !dn.includes(c))
+    const full = roster.length > 0 && missing.length === 0
+    return `<div class="acard ${late(a) ? 'late' : ''} ${a.month === nowMon ? 'now' : ''} ${full ? 'all' : ''}">
+      <div style="display:flex;justify-content:space-between;gap:8px"><h3><span class="tag">${esc(a.subject)}</span><span class="tag m">${a.month}월</span>${esc(a.title)}</h3><button class="g" style="padding:0 8px" data-del="${a.id}" title="항목 삭제">✕</button></div>
+      <small>${esc(a.method)}${late(a) ? ' · ⚠️ 우리 반이 아직 안 했어요' : ''}${full ? ' · ✅ 모든 반 완료' : ''}</small>
+      <div class="cls-chips">${all.length ? all.map(c => `<span class="cc ${dn.includes(c) ? 'ok' : ''}">${dn.includes(c) ? '✔' : '○'} ${esc(c)}</span>`).join('') : '<small>"반 목록 설정"에서 반을 넣으면 안 한 반이 보여요.</small>'}</div>
+      <div class="act"><button class="${mineDone ? 'undo' : 'done'}" data-t="${a.id}" data-v="${mineDone ? 0 : 1}">${mineDone ? '↩ 완료 취소' : '✔ 우리 반 했어요'}</button><small>${dn.length}${roster.length ? '/' + roster.length : ''}반 완료${missing.length ? ' · 아직: ' + missing.map(esc).join(', ') : ''}</small></div></div>`
+  }).join('') || (assess.length ? '<p class="note">조건에 맞는 항목이 없어요.</p>' : '')
+  $('aList').querySelectorAll('[data-t]').forEach(b => b.onclick = async () => {
+    if (!myCls()) return toast('위쪽에 "우리 반"을 먼저 적어 주세요. 예: 5-1')
+    store.set('cal.class', myCls())
+    const { error } = await sb.rpc('assess_toggle', { p_room: room, p_id: b.dataset.t, p_class: myCls(), p_done: b.dataset.v === '1', p_author: me })
+    if (error) return toast('실패: ' + error.message)
+    await load(); broadcast()
+  })
+  $('aList').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    if (!confirm('이 수행평가 항목을 모든 반에서 지울까요? (체크 기록도 함께 지워져요)')) return
+    const { error } = await sb.rpc('assess_delete', { p_room: room, p_id: b.dataset.del })
+    if (error) return toast('실패: ' + error.message)
+    await load(); broadcast()
+  })
+}
+$('aSeedBtn').onclick = async () => {
+  const { data, error } = await sb.rpc('assess_seed', { p_room: room, p_items: SEED })
+  if (error) return toast('실패: ' + error.message)
+  await load(); broadcast(); toast(data + '개 항목을 불러왔어요.')
+}
+$('nAdd').onclick = async () => {
+  const title = $('nTitle').value.trim(), subject = $('nSub').value.trim()
+  if (!subject || !title) return toast('교과와 평가 내용을 적어 주세요.')
+  const { error } = await sb.rpc('assess_save', { p_room: room, p_item: { subject, title, method: $('nMethod').value.trim(), month: +$('nMon').value } })
+  if (error) return toast('실패: ' + error.message)
+  $('nTitle').value = ''; $('nMethod').value = ''; await load(); broadcast(); toast('추가했어요.')
+}
+$('aRoster').onclick = async () => {
+  const t = prompt('학년 전체 반을 쉼표로 적어 주세요.\n예: 5-1, 5-2, 5-3, 5-4, 5-5', roster.join(', '))
+  if (t === null) return
+  const { error } = await sb.rpc('meta_set', { p_room: room, p_classes: splitCls(t).join(',') })
+  if (error) return toast('실패: ' + error.message)
+  await load(); broadcast()
+}
+const showTab = as => { $('calView').classList.toggle('hidden', as); $('asView').classList.toggle('hidden', !as); $('tCal').classList.toggle('on', !as); $('tAs').classList.toggle('on', as) }
+$('tCal').onclick = () => showTab(false); $('tAs').onclick = () => showTab(true)
 
 // ---------- 내보내기 공통 ----------
 function pick(range){
