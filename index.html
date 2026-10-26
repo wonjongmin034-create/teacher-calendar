@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>선생님 공유 캘린더</title>
+<style>
+  :root{--bg:#fdf6e3;--card:#fff;--ink:#3b2f1e;--accent:#e8833a;--green:#5a9f68;--line:#e6d9bd;--mute:#a89f8a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;min-height:100vh}
+  button{font:inherit;border:0;border-radius:10px;padding:8px 14px;background:var(--accent);color:#fff;font-weight:bold;cursor:pointer}
+  button.g{background:var(--mute)} button.gr{background:var(--green)} button.red{background:#d94f4f}
+  button:disabled{opacity:.4;cursor:default}
+  input,select,textarea{font:inherit;border:2px solid var(--line);border-radius:8px;padding:7px;width:100%;background:#fff;color:var(--ink)}
+  label{display:block;font-size:13px;margin:8px 0 3px;opacity:.75}
+  .hidden{display:none!important}
+  /* 입장 화면 */
+  #join{max-width:380px;margin:12vh auto;padding:24px;background:var(--card);border:2px solid var(--line);border-radius:16px;text-align:center}
+  #join h1{margin:0 0 4px} #join p{font-size:13px;opacity:.65;margin:0 0 12px}
+  /* 본 화면 */
+  header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 14px;max-width:1100px;margin:0 auto}
+  header h1{font-size:20px;margin:0}
+  .bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  main{max-width:1100px;margin:0 auto;padding:0 14px 40px;display:grid;grid-template-columns:1fr 300px;gap:14px}
+  @media(max-width:800px){main{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:2px solid var(--line);border-radius:14px;padding:10px}
+  .nav{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:8px}
+  .nav b{font-size:18px;min-width:130px;text-align:center}
+  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+  .dow{text-align:center;font-size:12px;opacity:.6;padding:3px}
+  .cell{min-height:84px;border:1px solid var(--line);border-radius:8px;padding:3px;overflow:hidden;cursor:pointer;background:#fffdf6}
+  .cell.out{opacity:.35} .cell.today{border:2px solid var(--accent)} .cell.sel{background:#fff0d6}
+  .cell .d{font-size:12px;font-weight:bold} .cell.sun .d{color:#d94f4f} .cell.sat .d{color:#3b7dd8}
+  .chip{font-size:11px;border-radius:4px;padding:1px 4px;margin-top:2px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .more{font-size:11px;opacity:.6}
+  @media(max-width:560px){.cell{min-height:60px}.chip{font-size:10px}}
+  .item{border-left:6px solid;padding:6px 8px;margin:6px 0;background:#fffdf6;border-radius:6px;cursor:pointer;font-size:14px}
+  .item small{display:block;opacity:.65}
+  .legend{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;margin-top:8px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:3px}
+  /* 모달 */
+  .modal{position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;padding:12px;z-index:10}
+  .box{background:#fff;border-radius:14px;padding:16px;width:100%;max-width:440px;max-height:92vh;overflow:auto}
+  .box h2{margin:0 0 6px;font-size:18px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+  .note{font-size:12px;opacity:.7;line-height:1.5}
+  ol.note{padding-left:18px} code{background:#f3ead2;padding:1px 4px;border-radius:4px;word-break:break-all}
+  #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#3b2f1e;color:#fff;padding:9px 16px;border-radius:20px;font-size:14px;z-index:20}
+</style>
+</head>
+<body>
+
+<div id="join">
+  <h1>📅 선생님 캘린더</h1>
+  <p>같은 공유 코드를 쓰는 선생님끼리 일정을 함께 봐요.</p>
+  <label>공유 코드 (4글자 이상, 우리끼리만 아는 말)</label>
+  <input id="jCode" maxlength="40" placeholder="예: 햇살초5학년">
+  <label>내 이름</label>
+  <input id="jName" maxlength="12" placeholder="예: 원종민">
+  <div class="acts" style="justify-content:center"><button id="jGo">들어가기</button></div>
+  <p id="jErr" style="color:#d94f4f;margin-top:8px"></p>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>📅 <span id="roomName"></span></h1>
+    <div class="bar">
+      <button id="bAdd">+ 일정 추가</button>
+      <button id="bGoogle" class="gr">구글캘린더로 올리기</button>
+      <button id="bIcs" class="g">.ics 파일</button>
+      <button id="bLink" class="g">링크 복사</button>
+      <button id="bOut" class="g">나가기</button>
+    </div>
+  </header>
+  <main>
+    <div class="panel">
+      <div class="nav"><button class="g" id="pPrev">◀</button><b id="mTitle"></b><button class="g" id="pNext">▶</button><button class="g" id="pToday">오늘</button></div>
+      <div class="grid" id="grid"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="panel"><b id="dTitle"></b><div id="dList"></div></div>
+  </main>
+</div>
+
+<!-- 일정 편집 -->
+<div class="modal hidden" id="mEdit"><div class="box">
+  <h2 id="eHead">일정</h2>
+  <label>제목</label><input id="eTitle" maxlength="60">
+  <div class="two">
+    <div><label>시작 날짜</label><input type="date" id="eS"></div>
+    <div><label>끝 날짜</label><input type="date" id="eE"></div>
+  </div>
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="eAll" style="width:auto"> 하루 종일</label>
+  <div class="two" id="eTimes">
+    <div><label>시작 시간</label><input type="time" id="eST" value="09:00"></div>
+    <div><label>끝 시간</label><input type="time" id="eET" value="10:00"></div>
+  </div>
+  <div class="two">
+    <div><label>분류</label><select id="eCat"></select></div>
+    <div><label>장소</label><input id="ePlace" maxlength="40"></div>
+  </div>
+  <label>메모</label><textarea id="eMemo" rows="3" maxlength="500"></textarea>
+  <p class="note" id="eBy"></p>
+  <div class="acts"><button class="red" id="eDel">삭제</button><button class="g" id="eCancel">닫기</button><button id="eSave">저장</button></div>
+</div></div>
+
+<!-- 구글 업로드 -->
+<div class="modal hidden" id="mG"><div class="box">
+  <h2>구글캘린더로 올리기</h2>
+  <label>어떤 일정을 올릴까요?</label>
+  <select id="gRange">
+    <option value="month">지금 보는 달의 일정</option>
+    <option value="future">오늘 이후 모든 일정</option>
+    <option value="all">전체 일정</option>
+  </select>
+  <p class="note">내 구글 기본 캘린더에 올라가요. 같은 일정을 다시 올리면 중복되지 않고 <b>수정</b>만 돼요.</p>
+  <p class="note" id="gStat"></p>
+  <details style="margin-top:8px"><summary class="note" style="cursor:pointer">구글 연결 설정 (처음 한 번)</summary>
+    <label>OAuth 클라이언트 ID</label>
+    <input id="gClient" placeholder="123456-abc.apps.googleusercontent.com">
+    <ol class="note">
+      <li><a href="https://console.cloud.google.com/projectcreate" target="_blank">Google Cloud</a>에서 프로젝트 만들기</li>
+      <li>'API 및 서비스 → 라이브러리'에서 <b>Google Calendar API</b> 사용 설정</li>
+      <li>'OAuth 동의 화면' 만들기(외부), 테스트 사용자에 선생님들 구글 이메일 추가</li>
+      <li>'사용자 인증 정보 → OAuth 클라이언트 ID(웹 애플리케이션)' 만들기. 승인된 JavaScript 원본에 <code id="gOrigin"></code> 추가</li>
+      <li>나온 클라이언트 ID를 위 칸에 붙여넣기</li>
+    </ol>
+  </details>
+  <div class="acts"><button class="g" id="gClose">닫기</button><button class="gr" id="gGo">올리기</button></div>
+</div></div>
+
+<div id="toast" class="hidden"></div>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm'
+
+// 공개용(anon) 키 — 표는 잠겨 있고 공유 코드로만 접근됩니다.
+const SUPABASE_URL = 'https://qrhppnyvkquekenthzpd.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyaHBwbnl2a3F1ZWtlbnRoenBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MDczMTUsImV4cCI6MjEwNDM4MzMxNX0.gvaonBYFCl-vooO9nTZqxg5U1BoDOuoIMbrZSlzZG5g'
+// 모든 선생님이 쓰게 하려면 여기에 구글 클라이언트 ID를 넣어 두세요(비워 두면 각자 입력).
+const DEFAULT_GOOGLE_CLIENT_ID = ''
+
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } })
+const CATS = { '수업':'#e8833a', '행사':'#5a9f68', '회의':'#3b7dd8', '연수':'#8a5cc4', '업무마감':'#d94f4f', '기타':'#8c8472' }
+const $ = id => document.getElementById(id)
+const store = { get(k){ try{return localStorage.getItem(k)||''}catch{return ''} }, set(k,v){ try{localStorage.setItem(k,v)}catch{} }, del(k){ try{localStorage.removeItem(k)}catch{} } }
+
+let room = '', me = '', events = [], view = new Date(), sel = ymd(new Date()), channel = null, editing = null
+
+function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
+function addDays(s,n){ const d = new Date(s+'T00:00:00'); d.setDate(d.getDate()+n); return ymd(d) }
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.remove('hidden'); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.add('hidden'),2800) }
+const hm = t => (t||'').slice(0,5)
+
+// ---------- 입장 ----------
+function enter(code, name){
+  room = code; me = name
+  store.set('cal.room', code); store.set('cal.name', name)
+  history.replaceState(null,'','#'+encodeURIComponent(code))
+  $('join').classList.add('hidden'); $('app').classList.remove('hidden')
+  $('roomName').textContent = code
+  channel?.unsubscribe()
+  channel = sb.channel('cal:'+code).on('broadcast',{event:'changed'},()=>load()).subscribe()
+  load(); clearInterval(enter.t); enter.t = setInterval(load, 30000)
+}
+$('jCode').value = decodeURIComponent(location.hash.slice(1)) || store.get('cal.room')
+$('jName').value = store.get('cal.name')
+$('jGo').onclick = () => {
+  const c = $('jCode').value.trim(), n = $('jName').value.trim()
+  if (c.length < 4) return $('jErr').textContent = '공유 코드는 4글자 이상이에요.'
+  if (!n) return $('jErr').textContent = '이름을 적어 주세요.'
+  enter(c, n)
+}
+if ($('jCode').value && $('jName').value) enter($('jCode').value.trim(), $('jName').value.trim())
+$('bOut').onclick = () => { store.del('cal.room'); clearInterval(enter.t); channel?.unsubscribe(); history.replaceState(null,'',location.pathname); $('app').classList.add('hidden'); $('join').classList.remove('hidden') }
+$('bLink').onclick = async () => { try{ await navigator.clipboard.writeText(location.href); toast('링크를 복사했어요. 공유 코드도 함께 알려 주세요.') }catch{ toast(location.href) } }
+
+// ---------- 데이터 ----------
+async function load(){
+  const { data, error } = await sb.rpc('cal_list', { p_room: room })
+  if (error) return toast('불러오기 실패: ' + error.message)
+  events = data || []; render()
+}
+function broadcast(){ channel?.send({ type:'broadcast', event:'changed', payload:{} }) }
+
+// ---------- 화면 ----------
+function onDay(ds){ return events.filter(e => e.start_date <= ds && ds <= e.end_date) }
+function render(){
+  const y = view.getFullYear(), m = view.getMonth()
+  $('mTitle').textContent = y+'년 '+(m+1)+'월'
+  const first = new Date(y, m, 1), start = new Date(y, m, 1 - first.getDay())
+  let h = ['일','월','화','수','목','금','토'].map(d=>`<div class="dow">${d}</div>`).join('')
+  const today = ymd(new Date())
+  for (let i=0;i<42;i++){
+    const d = new Date(start); d.setDate(start.getDate()+i)
+    const ds = ymd(d), list = onDay(ds)
+    h += `<div class="cell ${d.getMonth()!==m?'out':''} ${ds===today?'today':''} ${ds===sel?'sel':''} ${d.getDay()===0?'sun':''} ${d.getDay()===6?'sat':''}" data-d="${ds}"><div class="d">${d.getDate()}</div>`
+      + list.slice(0,3).map(e=>`<div class="chip" style="background:${CATS[e.category]||CATS['기타']}">${esc(e.title)}</div>`).join('')
+      + (list.length>3?`<div class="more">+${list.length-3}</div>`:'') + '</div>'
+  }
+  $('grid').innerHTML = h
+  $('grid').querySelectorAll('.cell').forEach(c => c.onclick = () => { sel = c.dataset.d; render() })
+  $('legend').innerHTML = Object.entries(CATS).map(([k,c])=>`<span><i style="background:${c}"></i>${k}</span>`).join('')
+  const dd = new Date(sel+'T00:00:00')
+  $('dTitle').textContent = `${dd.getMonth()+1}월 ${dd.getDate()}일 (${'일월화수목금토'[dd.getDay()]})`
+  const list = onDay(sel)
+  $('dList').innerHTML = list.length ? list.map(e=>`<div class="item" data-id="${e.id}" style="border-color:${CATS[e.category]||CATS['기타']}"><b>${esc(e.title)}</b><small>${e.all_day?'하루 종일':hm(e.start_time)+' ~ '+hm(e.end_time)}${e.place?' · '+esc(e.place):''}${e.start_date!==e.end_date?' · '+e.start_date.slice(5)+'~'+e.end_date.slice(5):''}</small>${e.memo?`<small>${esc(e.memo)}</small>`:''}<small>${esc(e.author)}</small></div>`).join('')
+    : '<p class="note">일정이 없어요.</p>'
+  $('dList').querySelectorAll('.item').forEach(i => i.onclick = () => openEdit(events.find(e=>e.id===i.dataset.id)))
+}
+function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
+$('pPrev').onclick = () => { view = new Date(view.getFullYear(), view.getMonth()-1, 1); render() }
+$('pNext').onclick = () => { view = new Date(view.getFullYear(), view.getMonth()+1, 1); render() }
+$('pToday').onclick = () => { view = new Date(); sel = ymd(view); render() }
+
+// ---------- 편집 ----------
+$('eCat').innerHTML = Object.keys(CATS).map(k=>`<option>${k}</option>`).join('')
+const syncTimes = () => $('eTimes').classList.toggle('hidden', $('eAll').checked)
+$('eAll').onchange = syncTimes
+$('eS').onchange = () => { if ($('eE').value < $('eS').value) $('eE').value = $('eS').value }
+function openEdit(ev){
+  editing = ev || null
+  $('eHead').textContent = ev ? '일정 수정' : '새 일정'
+  $('eTitle').value = ev?.title || ''
+  $('eS').value = ev?.start_date || sel; $('eE').value = ev?.end_date || sel
+  $('eAll').checked = ev ? ev.all_day : true
+  $('eST').value = hm(ev?.start_time) || '09:00'; $('eET').value = hm(ev?.end_time) || '10:00'
+  $('eCat').value = ev?.category || '기타'; $('ePlace').value = ev?.place || ''; $('eMemo').value = ev?.memo || ''
+  $('eBy').textContent = ev ? `${ev.author} 선생님이 올림` : ''
+  $('eDel').classList.toggle('hidden', !ev); syncTimes()
+  $('mEdit').classList.remove('hidden'); $('eTitle').focus()
+}
+$('bAdd').onclick = () => openEdit(null)
+$('eCancel').onclick = () => $('mEdit').classList.add('hidden')
+$('eSave').onclick = async () => {
+  const title = $('eTitle').value.trim()
+  if (!title) return toast('제목을 적어 주세요.')
+  const all = $('eAll').checked
+  if (!all && $('eS').value === $('eE').value && $('eET').value <= $('eST').value) return toast('끝 시간이 시작보다 늦어야 해요.')
+  const ev = { id: editing?.id || '', title, start_date: $('eS').value, end_date: $('eE').value, all_day: all,
+    start_time: all ? '' : $('eST').value, end_time: all ? '' : $('eET').value,
+    place: $('ePlace').value.trim(), memo: $('eMemo').value.trim(), category: $('eCat').value, author: editing?.author || me }
+  const { error } = await sb.rpc('cal_save', { p_room: room, p_ev: ev })
+  if (error) return toast('저장 실패: ' + error.message)
+  $('mEdit').classList.add('hidden'); sel = ev.start_date; await load(); broadcast(); toast('저장했어요.')
+}
+$('eDel').onclick = async () => {
+  if (!confirm('이 일정을 모든 선생님 캘린더에서 지울까요?')) return
+  const { error } = await sb.rpc('cal_delete', { p_room: room, p_id: editing.id })
+  if (error) return toast('삭제 실패: ' + error.message)
+  $('mEdit').classList.add('hidden'); await load(); broadcast()
+}
+
+// ---------- 내보내기 공통 ----------
+function pick(range){
+  const today = ymd(new Date()), y = view.getFullYear(), m = view.getMonth()
+  const ms = ymd(new Date(y, m, 1)), me_ = ymd(new Date(y, m+1, 0))
+  if (range === 'month') return events.filter(e => e.start_date <= me_ && e.end_date >= ms)
+  if (range === 'future') return events.filter(e => e.end_date >= today)
+  return events
+}
+
+// ---------- .ics ----------
+const icsEsc = s => String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n')
+const d8 = s => s.replace(/-/g,''), t6 = t => hm(t).replace(':','') + '00'
+$('bIcs').onclick = () => {
+  const list = pick('month')
+  if (!list.length) return toast('이 달에는 내보낼 일정이 없어요.')
+  const L = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//teacher-calendar//KO','CALSCALE:GREGORIAN']
+  for (const e of list){
+    L.push('BEGIN:VEVENT', `UID:${e.id}@teacher-calendar`, 'DTSTAMP:'+new Date().toISOString().replace(/[-:]|\.\d+/g,''), 'SUMMARY:'+icsEsc(e.title))
+    if (e.all_day) L.push('DTSTART;VALUE=DATE:'+d8(e.start_date), 'DTEND;VALUE=DATE:'+d8(addDays(e.end_date,1)))
+    else L.push(`DTSTART;TZID=Asia/Seoul:${d8(e.start_date)}T${t6(e.start_time)}`, `DTEND;TZID=Asia/Seoul:${d8(e.end_date)}T${t6(e.end_time)}`)
+    if (e.place) L.push('LOCATION:'+icsEsc(e.place))
+    if (e.memo) L.push('DESCRIPTION:'+icsEsc(e.memo))
+    L.push('END:VEVENT')
+  }
+  L.push('END:VCALENDAR')
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([L.join('\r\n')], { type:'text/calendar' }))
+  a.download = `선생님캘린더_${view.getFullYear()}-${String(view.getMonth()+1).padStart(2,'0')}.ics`
+  a.click(); toast('파일을 받았어요. 구글캘린더 → 설정 → 가져오기에서 올리세요.')
+}
+
+// ---------- 구글캘린더 직접 연동 ----------
+$('gOrigin').textContent = location.origin
+$('gClient').value = store.get('cal.gclient') || DEFAULT_GOOGLE_CLIENT_ID
+$('bGoogle').onclick = () => { $('gStat').textContent = ''; $('mG').classList.remove('hidden') }
+$('gClose').onclick = () => $('mG').classList.add('hidden')
+function loadGis(){
+  return new Promise((ok, no) => {
+    if (window.google?.accounts?.oauth2) return ok()
+    const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'
+    s.onload = ok; s.onerror = () => no(new Error('구글 로그인 스크립트를 불러오지 못했어요.')); document.head.appendChild(s)
+  })
+}
+function getToken(clientId){
+  return new Promise((ok, no) => {
+    google.accounts.oauth2.initTokenClient({
+      client_id: clientId, scope: 'https://www.googleapis.com/auth/calendar.events',
+      callback: r => r.access_token ? ok(r.access_token) : no(new Error(r.error_description || r.error || '권한을 받지 못했어요.')),
+      error_callback: e => no(new Error(e.type === 'popup_closed' ? '구글 창이 닫혔어요.' : (e.message || e.type))),
+    }).requestAccessToken()
+  })
+}
+function gBody(e){
+  const b = { id: e.id.replace(/-/g,''), status:'confirmed', summary: e.title, location: e.place || undefined,
+    description: [e.memo, `[${e.category}] ${e.author} 선생님`].filter(Boolean).join('\n') }
+  if (e.all_day) { b.start = { date: e.start_date }; b.end = { date: addDays(e.end_date,1) } }
+  else {
+    b.start = { dateTime: `${e.start_date}T${hm(e.start_time)}:00`, timeZone:'Asia/Seoul' }
+    b.end = { dateTime: `${e.end_date}T${hm(e.end_time)}:00`, timeZone:'Asia/Seoul' }
+  }
+  return b
+}
+$('gGo').onclick = async () => {
+  const cid = $('gClient').value.trim(), st = $('gStat'), btn = $('gGo')
+  if (!cid) { st.textContent = '아래 "구글 연결 설정"에서 클라이언트 ID를 먼저 넣어 주세요.'; document.querySelector('#mG details').open = true; return }
+  store.set('cal.gclient', cid)
+  const list = pick($('gRange').value)
+  if (!list.length) { st.textContent = '올릴 일정이 없어요.'; return }
+  btn.disabled = true
+  try {
+    st.textContent = '구글 로그인 창을 확인해 주세요…'
+    await loadGis(); const tok = await getToken(cid)
+    const base = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
+    const hdr = { Authorization:'Bearer '+tok, 'Content-Type':'application/json' }
+    let ok = 0, fail = 0
+    for (const e of list){
+      st.textContent = `올리는 중… ${ok+fail}/${list.length}`
+      const body = JSON.stringify(gBody(e))
+      let r = await fetch(base, { method:'POST', headers:hdr, body })
+      if (r.status === 409) r = await fetch(base+'/'+e.id.replace(/-/g,''), { method:'PUT', headers:hdr, body })
+      r.ok ? ok++ : fail++
+    }
+    st.textContent = `완료! ${ok}개 올렸어요.` + (fail ? ` (${fail}개 실패)` : '')
+  } catch (err) { st.textContent = '실패: ' + err.message }
+  btn.disabled = false
+}
+</script>
+</body>
+</html>
