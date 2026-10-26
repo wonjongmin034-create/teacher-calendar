@@ -90,8 +90,7 @@
       <hr class="sep"><div class="sec">🎪 놀이교실 (점심시간)</div><div id="pList"></div>
       <div class="inl"><input id="pClass" maxlength="10" placeholder="우리 반 (예: 5-1)"><button id="pAdd" class="gr">신청</button></div>
       <hr class="sep"><div class="sec">🏃 조퇴 기록</div><div id="lList"></div>
-      <div class="inl"><input id="lName" maxlength="12" placeholder="이름"><input type="time" id="lTime" value="14:00" style="flex:0 0 105px"></div>
-      <div class="inl"><input id="lWhy" maxlength="30" placeholder="사유 (선택)"><button id="lAdd">기록</button></div>
+      <div class="inl"><input id="lName" maxlength="12" placeholder="이름"><input type="time" id="lTime" value="14:00" style="flex:0 0 105px"><button id="lAdd">기록</button></div>
     </div>
   </main>
 </div>
@@ -228,7 +227,7 @@ function render(){
   $('dList').querySelectorAll('.item').forEach(i => i.onclick = () => openEdit(events.find(e=>e.id===i.dataset.id)))
   const pl = play.filter(p=>p.day===sel), lv = leaves.filter(l=>l.day===sel)
   $('pList').innerHTML = pl.length ? pl.map(p=>`<div class="row2"><span>🎪 <b>${esc(p.class_name)}</b> <small>${esc(p.author)}</small></span><button data-p="${p.id}">취소</button></div>`).join('') : '<p class="note">신청한 반이 없어요.</p>'
-  $('lList').innerHTML = lv.length ? lv.map(l=>`<div class="row2"><span>🏃 <b>${esc(l.teacher)}</b> ${hm(l.leave_time)}${l.reason?' <small>'+esc(l.reason)+'</small>':''}</span><button data-l="${l.id}">삭제</button></div>`).join('') : '<p class="note">조퇴 기록이 없어요.</p>'
+  $('lList').innerHTML = lv.length ? lv.map(l=>`<div class="row2"><span>🏃 <b>${esc(l.teacher)}</b> ${hm(l.leave_time)}</span><button data-l="${l.id}">삭제</button></div>`).join('') : '<p class="note">조퇴 기록이 없어요.</p>'
   $('pList').querySelectorAll('button').forEach(b => b.onclick = () => removeRow('play_delete', b.dataset.p, '이 반의 놀이교실 신청을 취소할까요?'))
   $('lList').querySelectorAll('button').forEach(b => b.onclick = () => removeRow('leave_delete', b.dataset.l, '이 조퇴 기록을 삭제할까요?'))
 }
@@ -253,9 +252,9 @@ $('pAdd').onclick = async () => {
 $('lAdd').onclick = async () => {
   const n = $('lName').value.trim() || me
   if (!$('lTime').value) return toast('조퇴 시간을 골라 주세요.')
-  const { error } = await sb.rpc('leave_save', { p_room: room, p_day: sel, p_teacher: n, p_time: $('lTime').value, p_reason: $('lWhy').value.trim() })
+  const { error } = await sb.rpc('leave_save', { p_room: room, p_day: sel, p_teacher: n, p_time: $('lTime').value, p_reason: '' })
   if (error) return toast('기록 실패: ' + error.message)
-  $('lWhy').value = ''; await load(); broadcast(); toast('조퇴를 기록했어요.')
+  await load(); broadcast(); toast('조퇴를 기록했어요.')
 }
 function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
 $('pPrev').onclick = () => { view = new Date(view.getFullYear(), view.getMonth()-1, 1); render() }
